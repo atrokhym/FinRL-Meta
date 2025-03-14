@@ -39,7 +39,7 @@ class Binance(_Base):
             check_date(start_date)
             check_date(end_date)
         super().__init__(data_source, start_date, end_date, time_interval, **kwargs)
-        self.url = "https://api.binance.com/api/v3/klines"
+        self.url = "https://api.binance.us/api/v3/klines"
         self.time_diff = None
 
     # main functions
@@ -61,11 +61,15 @@ class Binance(_Base):
             final_df = self.fetch_n_combine(self.start_date, self.end_date, ticker_list)
         else:
             final_df = pd.DataFrame()
-            for i in ticker_list:
-                hist_data = self.dataframe_with_limit(symbol=i)
-                df = hist_data.iloc[:-1].dropna()
-                df["tic"] = i
-                final_df = pd.concat([final_df, df], axis=0, join="outer")
+        for i in ticker_list:
+            hist_data = self.dataframe_with_limit(symbol=i)
+            if hist_data is None:
+                hist_data = pd.DataFrame()
+            if hist_data.empty:
+                continue
+            df = hist_data.iloc[:-1].dropna()
+            df["tic"] = i
+            final_df = pd.concat([final_df, df], axis=0, join="outer")
         self.dataframe = final_df
 
         self.save_data(save_path)
@@ -116,6 +120,46 @@ class Binance(_Base):
     # helper functions
     def stringify_dates(self, date: dt.datetime):
         return str(int(date.timestamp() * 1000))
+
+    def get_binance_barsGemini(self, last_datetime, symbol):
+        """
+        Get Binance Bars.
+
+        Args:
+            last_datetime (str): Last datetime.
+            symbol (str): Symbol.
+
+        Returns:
+            pd.DataFrame: Binance bars.
+        """
+        req_params = {
+            "symbol": symbol,
+            "interval": self.time_interval,
+            "startTime": last_datetime,
+            "limit": 1000,
+        }
+
+        df = pd.DataFrame(requests.get(self.url, params=req_params).json())
+        
+        if df.empty:
+            return None
+
+        df["date"] = pd.to_datetime(df["t"], unit='ms')  # Convert timestamp to datetime
+        df.set_index("date", inplace=True)  # Set datetime as index
+        
+        df = df[["o", "h", "l", "c", "v"]]
+        df.rename(
+            columns={
+                "o": "open",
+                "h": "high",
+                "l": "low",
+                "c": "close",
+                "v": "volume",
+            },
+            inplace=True,
+        )
+        df["volume"] = pd.to_numeric(df["volume"])
+        return df
 
     def get_binance_bars(self, last_datetime, symbol):
         """
@@ -198,29 +242,32 @@ class Binance(_Base):
         last_datetime = self.start_time
         while True:
             new_df = self.get_binance_bars(last_datetime, symbol)
-            if new_df is None:
+            if new_df is None or new_df.shape[0] < 2:
                 break
-
             if last_datetime == self.end_time:
                 break
-
             final_df = pd.concat([final_df, new_df], axis=0, join="outer")
-            # last_datetime = max(new_df.datetime) + dt.timedelta(days=1)
             last_datetime = max(new_df.datetime)
             if isinstance(last_datetime, pd.Timestamp):
                 last_datetime = last_datetime.to_pydatetime()
-
-            if self.time_diff == None:
+            if self.time_diff is None:
                 self.time_diff = new_df.loc[1]["datetime"] - new_df.loc[0]["datetime"]
-
             last_datetime = last_datetime + self.time_diff
             last_datetime = self.stringify_dates(last_datetime)
-
-        date_value = final_df["datetime"].apply(
-            lambda x: x.strftime("%Y-%m-%d %H:%M:%S")
-        )
-        final_df.insert(0, "time", date_value)
-        final_df.drop("datetime", inplace=True, axis=1)
+            if final_df.empty:
+                return final_df
+            if "datetime" not in final_df.columns:
+                if isinstance(final_df.index, pd.DatetimeIndex):
+                    final_df = final_df.copy()
+                    final_df["datetime"] = final_df.index
+                elif "date" in final_df.columns:
+                    final_df.rename(columns={"date": "datetime"}, inplace=True)
+                else:
+                    raise KeyError("'datetime' column not found in the final dataframe")
+            date_value = final_df["datetime"].apply(lambda x: x.strftime("%Y-%m-%d %H:%M:%S"))
+            final_df.insert(0, "time", date_value)
+            final_df.drop("datetime", inplace=True, axis=1)
+            return final_df
         return final_df
 
     def get_download_url(self, file_url):

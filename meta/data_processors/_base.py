@@ -9,7 +9,14 @@ from typing import List
 import numpy as np
 import pandas as pd
 import stockstats
-import talib
+
+# Try to import talib, but make it optional
+try:
+    import talib
+    TALIB_AVAILABLE = True
+except ImportError:
+    print("Warning: talib not available. Some technical indicators will not be calculated.")
+    TALIB_AVAILABLE = False
 
 from meta.config import BINANCE_BASE_URL
 from meta.config import TIME_ZONE_BERLIN
@@ -179,6 +186,12 @@ class _Base:
             self.dataframe.rename(columns={"level_0": "tic"}, inplace=True)
         assert select_stockstats_talib in {0, 1}
         print("tech_indicator_list: ", tech_indicator_list)
+        
+        # If talib is requested but not available, fall back to stockstats
+        if select_stockstats_talib == 1 and not TALIB_AVAILABLE:
+            print("Warning: talib requested but not available. Falling back to stockstats.")
+            select_stockstats_talib = 0
+            
         if select_stockstats_talib == 0:  # use stockstats
             stock = stockstats.StockDataFrame.retype(self.dataframe)
             unique_ticker = stock.tic.unique()
@@ -208,34 +221,37 @@ class _Base:
                         how="left",
                     )
         else:  # use talib
-            final_df = pd.DataFrame()
-            for i in self.dataframe.tic.unique():
-                tic_df = self.dataframe[self.dataframe.tic == i]
-                (
-                    tic_df.loc["macd"],
-                    tic_df.loc["macd_signal"],
-                    tic_df.loc["macd_hist"],
-                ) = talib.MACD(
-                    tic_df["close"],
-                    fastperiod=12,
-                    slowperiod=26,
-                    signalperiod=9,
-                )
-                tic_df.loc["rsi"] = talib.RSI(tic_df["close"], timeperiod=14)
-                tic_df.loc["cci"] = talib.CCI(
-                    tic_df["high"],
-                    tic_df["low"],
-                    tic_df["close"],
-                    timeperiod=14,
-                )
-                tic_df.loc["dx"] = talib.DX(
-                    tic_df["high"],
-                    tic_df["low"],
-                    tic_df["close"],
-                    timeperiod=14,
-                )
-                final_df = pd.concat([final_df, tic_df], axis=0, join="outer")
-            self.dataframe = final_df
+            if TALIB_AVAILABLE:
+                final_df = pd.DataFrame()
+                for i in self.dataframe.tic.unique():
+                    tic_df = self.dataframe[self.dataframe.tic == i]
+                    (
+                        tic_df.loc["macd"],
+                        tic_df.loc["macd_signal"],
+                        tic_df.loc["macd_hist"],
+                    ) = talib.MACD(
+                        tic_df["close"],
+                        fastperiod=12,
+                        slowperiod=26,
+                        signalperiod=9,
+                    )
+                    tic_df.loc["rsi"] = talib.RSI(tic_df["close"], timeperiod=14)
+                    tic_df.loc["cci"] = talib.CCI(
+                        tic_df["high"],
+                        tic_df["low"],
+                        tic_df["close"],
+                        timeperiod=14,
+                    )
+                    tic_df.loc["dx"] = talib.DX(
+                        tic_df["high"],
+                        tic_df["low"],
+                        tic_df["close"],
+                        timeperiod=14,
+                    )
+                    final_df = pd.concat([final_df, tic_df], axis=0, join="outer")
+                self.dataframe = final_df
+            else:
+                raise ImportError("talib is not available. Please install it or use stockstats (select_stockstats_talib=0).")
 
         self.dataframe.sort_values(by=["time", "tic"], inplace=True)
         if drop_na_timesteps:
