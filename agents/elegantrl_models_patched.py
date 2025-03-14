@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import torch
 from elegantrl.agents import *
+import sys
+sys.path.insert(0, '/tmp/FinRL-Meta')
 from elegantrl.train.config import Config
 from elegantrl.train.run import train_agent, train_agent_single_process
 
@@ -101,11 +103,15 @@ class DRLAgent:
                 )
         return model
 
-    def train_model(self, model, cwd, total_timesteps=5000):
+    def train_model(self, model, cwd, total_timesteps=5000, if_single_process=True):
         model.cwd = cwd
         model.break_step = total_timesteps
-        # Use single process mode to avoid multiprocessing issues
-        train_agent(model, if_single_process=True)
+        
+        # Import and use our fixed version of train_agent_single_process
+        from elegantrl.train.fixed_run import train_agent_single_process as fixed_train_agent_single_process
+        
+        # Use the fixed version to avoid the unpacking error
+        fixed_train_agent_single_process(model)
 
     @staticmethod
     def DRL_prediction(model_name, cwd, net_dimension, environment, env_args):
