@@ -9,6 +9,7 @@ from typing import List
 
 import pandas as pd
 import requests
+import numpy as np
 
 from meta.config import BINANCE_BASE_URL
 from meta.config import TIME_ZONE_BERLIN
@@ -18,10 +19,9 @@ from meta.config import TIME_ZONE_SELFDEFINED
 from meta.config import TIME_ZONE_SHANGHAI
 from meta.config import TIME_ZONE_USEASTERN
 from meta.config import USE_TIME_ZONE_SELFDEFINED
+import talib
 from meta.data_processors._base import _Base
 from meta.data_processors._base import check_date
-
-# from _base import check_date
 
 
 class Binance(_Base):
@@ -39,8 +39,45 @@ class Binance(_Base):
             check_date(start_date)
             check_date(end_date)
         super().__init__(data_source, start_date, end_date, time_interval, **kwargs)
-        self.url = "https://api.binance.com/api/v3/klines"
+        self.url = "https://api.binance.us/api/v3/klines"
         self.time_diff = None
+
+    def preprocess_data(self, df, tech_indicator_list):
+        final_df = pd.DataFrame()
+        for i in df.tic.unique():
+            tic_df = df[df.tic == i].copy()
+            tic_df.loc[:, 'macd'], tic_df.loc[:, 'macd_signal'], tic_df.loc[:, 'macd_hist'] = talib.MACD(tic_df['close'], fastperiod=12,
+                                                                                        slowperiod=26, signalperiod=9)
+            tic_df.loc[:, 'rsi'] = talib.RSI(tic_df['close'], timeperiod=14)
+            tic_df.loc[:, 'cci'] = talib.CCI(tic_df['high'], tic_df['low'], tic_df['close'], timeperiod=14)
+            tic_df.loc[:, 'dx'] = talib.DX(tic_df['high'], tic_df['low'], tic_df['close'], timeperiod=14)
+            final_df = pd.concat([final_df, tic_df], axis=0, join="outer")
+
+        # Find the maximum number of NaN values for any ticker
+        max_nan = 0
+        final_df = final_df.dropna()
+        for tic in final_df.tic.unique():
+            nan_count = final_df[final_df.tic == tic].isnull().any(axis=1).sum() #This line is not needed since we already dropped all rows with NaN
+            max_nan = max(max_nan, nan_count)
+
+        # Drop the first max_nan rows from each ticker
+        final_df2 = pd.DataFrame()
+        for tic in final_df.tic.unique():
+            tic_df = final_df[final_df.tic == tic].iloc[max_nan:]
+            #print(f"Length of {tic}: {len(tic_df)}")
+            final_df2 = pd.concat([final_df2, tic_df], axis=0, join="outer")
+
+        return final_df2
+
+    def df_to_array(self, df, tech_indicator_list, if_vix):
+        unique_ticker = df.tic.unique()
+        price_array = np.column_stack([df[df.tic == tic].close.values for tic in unique_ticker])
+        tech_array = np.hstack([df.loc[(df.tic == tic), tech_indicator_list].values for tic in unique_ticker])
+        if if_vix:
+            risk_array = np.column_stack([df[df.tic == tic].vix.values for tic in unique_ticker])
+        else:
+            risk_array = np.array([])
+        return price_array, tech_array, risk_array
 
     # main functions
     def download_data(
@@ -70,9 +107,9 @@ class Binance(_Base):
 
         self.save_data(save_path)
 
-        print(
-            f"Download complete! Dataset saved to {save_path}. \nShape of DataFrame: {self.dataframe.shape}"
-        )
+        # print(
+        #     f"Download complete! Dataset saved to {save_path}. \nShape of DataFrame: {self.dataframe.shape}"
+        # )
 
     # def clean_data(self, df):
     #     df = df.dropna()
@@ -216,11 +253,12 @@ class Binance(_Base):
             last_datetime = last_datetime + self.time_diff
             last_datetime = self.stringify_dates(last_datetime)
 
-        date_value = final_df["datetime"].apply(
-            lambda x: x.strftime("%Y-%m-%d %H:%M:%S")
-        )
-        final_df.insert(0, "time", date_value)
-        final_df.drop("datetime", inplace=True, axis=1)
+        # date_value = final_df["datetime"].apply(
+        #     lambda x: x.strftime("%Y-%m-%d %H:%M:%S")
+        # )
+        # final_df.insert(0, "time", date_value)
+        # final_df.drop("datetime", inplace=True, axis=1)
+        final_df = final_df.rename(columns={"datetime": "time"})
         return final_df
 
     def get_download_url(self, file_url):

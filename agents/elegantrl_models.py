@@ -43,11 +43,11 @@ class DRLAgent:
             make a prediction in a test dataset and get results
     """
 
-    def __init__(self, env, price_array, tech_array, turbulence_array):
+    def __init__(self, env):
         self.env = env
-        self.price_array = price_array
-        self.tech_array = tech_array
-        self.turbulence_array = turbulence_array
+        self.price_array = env.price_array
+        self.tech_array = env.tech_array
+        self.turbulence_array = env.turbulence_array
 
     def get_model(self, model_name, model_kwargs):
         self.env_config = {

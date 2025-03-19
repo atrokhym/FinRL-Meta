@@ -22,6 +22,8 @@ class CryptoEnv:  # custom env
         self.gamma = gamma
         self.price_array = config["price_array"]
         self.tech_array = config["tech_array"]
+        self.turbulence_array = config["turbulence_array"]
+        print("Turbulence array in CryptoEnv init:", self.turbulence_array is not None)
         self._generate_action_normalizer()
         self.crypto_num = self.price_array.shape[1]
         self.max_step = self.price_array.shape[0] - lookback - 1
