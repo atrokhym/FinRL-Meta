@@ -104,12 +104,12 @@ class DRLAgent:
     def train_model(self, model, cwd, total_timesteps=5000):
         model.cwd = cwd
         model.break_step = total_timesteps
-        train_agent(model)
+        train_agent(args=model)
 
     @staticmethod
     def DRL_prediction(model_name, cwd, net_dimension, environment, env_args):
         import torch
-
+        #print(f"Environment type in DRL_prediction: {type(environment)}")
         gpu_id = 0  # >=0 means GPU ID, -1 means CPU
         agent_class = MODELS[model_name]
         stock_dim = env_args["price_array"].shape[1]
@@ -150,14 +150,13 @@ class DRLAgent:
         episode_total_assets = [env.initial_total_asset]
         max_step = env.max_step
         for steps in range(max_step):
-            s_tensor = torch.as_tensor(
-                state, dtype=torch.float32, device=device
-            ).unsqueeze(0)
+            #print("State shape in DRL_prediction before tensor:", state[0].shape)
+            s_tensor = torch.as_tensor(state[0], dtype=torch.float32, device=device).unsqueeze(0)
             a_tensor = act(s_tensor).argmax(dim=1) if if_discrete else act(s_tensor)
             action = (
                 a_tensor.detach().cpu().numpy()[0]
             )  # not need detach(), because using torch.no_grad() outside
-            state, reward, done, _ = env.step(action)
+            state, reward, done, _, info = env.step(action)
             total_asset = env.amount + (env.price_ary[env.day] * env.stocks).sum()
             episode_total_assets.append(total_asset)
             episode_return = total_asset / env.initial_total_asset
@@ -165,5 +164,5 @@ class DRLAgent:
             if done:
                 break
         print("Test Finished!")
-        print("episode_retuen", episode_return)
+        print("episode_return", episode_return)
         return episode_total_assets
