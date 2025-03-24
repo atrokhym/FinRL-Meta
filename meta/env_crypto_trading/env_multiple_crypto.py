@@ -296,13 +296,24 @@ class MyCryptoEnv:  # custom env
 
     def get_state(self):
         state_list = []
+        
+        # Cash (1 dimension)
         state_list.append(self.cash * 2 ** -18)
+        
+        # Additional state values (2 dimensions)
         state_list.extend([0.0, 0.0])
         
+        # Stocks (price_dim dimensions)
         state_list.extend(self.stocks.tolist())
+        
+        # Current prices (price_dim dimensions)
         state_list.extend(self.current_price.tolist())
+        
+        # Holdings (price_dim dimensions)
         holdings = self.stocks * self.current_price
         state_list.extend(holdings.tolist())
+        
+        # Technical indicators (tech_dim dimensions)
         state_list.extend(self.current_tech.tolist())
         
         state = np.array(state_list, dtype=np.float32).copy()

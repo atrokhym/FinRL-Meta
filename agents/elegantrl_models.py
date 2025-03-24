@@ -113,7 +113,9 @@ class DRLAgent:
         gpu_id = 0  # >=0 means GPU ID, -1 means CPU
         agent_class = MODELS[model_name]
         stock_dim = env_args["price_array"].shape[1]
-        state_dim = 1 + 2 + 3 * stock_dim + env_args["tech_array"].shape[1]
+        stock_dim = env_args["price_array"].shape[1]
+        tech_dim = env_args["tech_array"].shape[1]
+        state_dim = 1 + 2 + 3 * stock_dim + tech_dim
         action_dim = stock_dim
         env_args = {
             "env_num": 1,
@@ -126,7 +128,8 @@ class DRLAgent:
         }
 
         actor_path = f"{cwd}/act.pth"
-        net_dim = [2**7]
+        # Match the architecture from the saved model: [128, 64]
+        net_dim = [128, 64]
 
         """init"""
         env = environment
@@ -137,33 +140,53 @@ class DRLAgent:
             net_dim, env.state_dim, env.action_dim, gpu_id=gpu_id, args=args
         ).act
         parameters_dict = {}
-        act = torch.load(actor_path)
-        for name, param in act.named_parameters():
-            parameters_dict[name] = torch.tensor(param.detach().cpu().numpy())
-
-        act.load_state_dict(parameters_dict)
+        # Load the saved model
+        try:
+            saved_model = torch.load(actor_path)
+            if isinstance(saved_model, dict):
+                layers = []
+                for key in saved_model.keys():
+                    if 'weight' in key and len(saved_model[key].shape) == 2:
+                        layers.append(saved_model[key].shape[0])
+                
+                if layers:
+                    net_dim = layers[:-1]  # All except the last layer
+                    agent = MODELS[model_name]
+                    act = agent(
+                        net_dim,
+                        env.state_dim,
+                        env.action_dim,
+                        gpu_id=gpu_id,
+                        args=args
+                    ).act
+                    act.load_state_dict(saved_model)
+                else:
+                    raise ValueError("Could not detect model architecture from state dict")
+            else:
+                act = saved_model
+            
+        except Exception as e:
+            raise  # Re-raise without extra logging
 
         if_discrete = env.if_discrete
         device = next(act.parameters()).device
-        state = env.reset()
+        state_tuple = env.reset()
+        state = state_tuple[0] if isinstance(state_tuple, tuple) else state_tuple
         episode_returns = []  # the cumulative_return / initial_account
         episode_total_assets = [env.initial_total_asset]
         max_step = env.max_step
         for steps in range(max_step):
-            s_tensor = torch.as_tensor(
-                state, dtype=torch.float32, device=device
-            ).unsqueeze(0)
+            s_tensor = torch.as_tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
             a_tensor = act(s_tensor).argmax(dim=1) if if_discrete else act(s_tensor)
             action = (
                 a_tensor.detach().cpu().numpy()[0]
             )  # not need detach(), because using torch.no_grad() outside
-            state, reward, done, _ = env.step(action)
+            state, reward, done, truncated, info = env.step(action)
+            done = done or truncated  # Combine terminal conditions
             total_asset = env.amount + (env.price_ary[env.day] * env.stocks).sum()
             episode_total_assets.append(total_asset)
             episode_return = total_asset / env.initial_total_asset
             episode_returns.append(episode_return)
             if done:
                 break
-        print("Test Finished!")
-        print("episode_retuen", episode_return)
         return episode_total_assets

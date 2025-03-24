@@ -1,4 +1,3 @@
-
 import datetime as dt
 import json
 import os
@@ -61,31 +60,13 @@ class Binance(_Base):
             self.limit = 1000
             final_df = self.fetch_n_combine(self.start_date, self.end_date, ticker_list)
         else:
-            # final_df = pd.DataFrame()
-            # Initialize final_df with the columns from the first non-empty hist_data
-            # Initialize final_df with the columns from the first non-empty hist_data
             final_df = pd.DataFrame()
             for i in ticker_list:
                 hist_data = self.dataframe_with_limit(symbol=i)
-                if hist_data is not None and not hist_data.empty:
-                    final_df = hist_data.iloc[:-1].dropna()
-                    final_df['tic'] = i
-                    break  # Exit loop once we have the first non-empty DataFrame
-
-            if final_df.empty:
-                raise ValueError("All tickers returned empty data.")
-
-            for i in ticker_list:
-                if not final_df.empty and i == final_df['tic'].iloc[0]:
-                    continue
-                hist_data = self.dataframe_with_limit(symbol=i)
-                if hist_data is not None and not hist_data.empty:  # Check if hist_data is empty
-                    df = hist_data.iloc[:-1].dropna()
-                    df["tic"] = i
-                    final_df = pd.concat([final_df, df], axis=0, join="outer")
-            final_df = final_df.reset_index(drop=True)
-            print(f"download_data: final_df columns: {final_df.columns}")
-            self.dataframe = final_df
+                df = hist_data.iloc[:-1].dropna()
+                df["tic"] = i
+                final_df = pd.concat([final_df, df], axis=0, join="outer")
+        self.dataframe = final_df
 
         self.save_data(save_path)
 
@@ -213,7 +194,7 @@ class Binance(_Base):
         return merged_df
 
     def dataframe_with_limit(self, symbol):
-        final_df = None  # Initialize as None
+        final_df = pd.DataFrame(columns=["datetime", "open", "high", "low", "close", "volume", "adjusted_close"])
         last_datetime = self.start_time
         while True:
             new_df = self.get_binance_bars(last_datetime, symbol)
@@ -223,17 +204,11 @@ class Binance(_Base):
             if last_datetime == self.end_time:
                 break
 
-            if 'datetime' not in new_df.columns:
-                print(f"Error: 'datetime' column missing in new_df for symbol {symbol}.")
-                # Consider raising an exception or handling this case more robustly
-                continue # Skip to the next iteration
-
-            if final_df is None:  # Initialize final_df with the first valid new_df
-                final_df = new_df
+            final_df = pd.concat([final_df, new_df], axis=0, join="outer", ignore_index=True)
+            if len(new_df) > 0:
+                last_datetime = max(new_df.datetime)
             else:
-                final_df = pd.concat([final_df, new_df], axis=0, join="outer")
-            # last_datetime = max(new_df.datetime) + dt.timedelta(days=1)
-            last_datetime = max(new_df.datetime)
+                break
             if isinstance(last_datetime, pd.Timestamp):
                 last_datetime = last_datetime.to_pydatetime()
 
@@ -243,14 +218,15 @@ class Binance(_Base):
             last_datetime = last_datetime + self.time_diff
             last_datetime = self.stringify_dates(last_datetime)
 
-        if final_df is None:
-            return pd.DataFrame()  # Return an empty DataFrame
-
-        date_value = final_df["datetime"].apply(
-            lambda x: x.strftime("%Y-%m-%d %H:%M:%S")
-        )
-        final_df.insert(0, "time", date_value)
-        final_df.drop("datetime", inplace=True, axis=1)
+        if not final_df.empty:
+            date_value = final_df["datetime"].apply(
+                lambda x: x.strftime("%Y-%m-%d %H:%M:%S")
+            )
+            final_df.insert(0, "time", date_value)
+            final_df.drop("datetime", inplace=True, axis=1)
+        else:
+            print(f"No data found for symbol {symbol}")
+            final_df = pd.DataFrame(columns=["time", "open", "high", "low", "close", "volume", "adjusted_close"])
         return final_df
 
     def get_download_url(self, file_url):
