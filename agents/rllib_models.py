@@ -1,12 +1,12 @@
 # DRL models from RLlib
 import ray
-from ray.rllib.agents.a3c import a2c
-from ray.rllib.agents.ddpg import ddpg
-from ray.rllib.agents.ddpg import td3
-from ray.rllib.agents.ppo import ppo
-from ray.rllib.agents.sac import sac
+from ray.rllib.algorithms.a3c import A3C
+from ray.rllib.algorithms.ddpg import DDPG
+from ray.rllib.algorithms.td3 import TD3
+from ray.rllib.algorithms.ppo import PPO
+from ray.rllib.algorithms.sac import SAC
 
-MODELS = {"a2c": a2c, "ddpg": ddpg, "td3": td3, "sac": sac, "ppo": ppo}
+MODELS = {"a2c": A3C, "ddpg": DDPG, "td3": TD3, "sac": SAC, "ppo": PPO}
 
 from ray.tune.registry import register_env
 
@@ -60,11 +60,11 @@ class DRLAgent:
         # get algorithm default configration based on algorithm in RLlib
         if model_config is None:
             if model_name == "a2c":
-                model_config = model.A2C_DEFAULT_CONFIG.copy()
+                model_config = A3C.get_default_config().copy()
             elif model_name == "td3":
-                model_config = model.TD3_DEFAULT_CONFIG.copy()
+                model_config = TD3.get_default_config().copy()
             else:
-                model_config = model.DEFAULT_CONFIG.copy()
+                model_config = MODELS[model_name].get_default_config().copy()
 
         register_env("finrl_env", self.env)
         model_config["env"] = "finrl_env"
@@ -84,16 +84,7 @@ class DRLAgent:
         if model_name not in MODELS:
             raise NotImplementedError("NotImplementedError")
 
-        if model_name == "ppo":
-            trainer = model.PPOTrainer(env=self.env, config=model_config)
-        elif model_name == "a2c":
-            trainer = model.A2CTrainer(env=self.env, config=model_config)
-        elif model_name == "ddpg":
-            trainer = model.DDPGTrainer(env=self.env, config=model_config)
-        elif model_name == "td3":
-            trainer = model.TD3Trainer(env=self.env, config=model_config)
-        elif model_name == "sac":
-            trainer = model.SACTrainer(env=self.env, config=model_config)
+        trainer = MODELS[model_name](config=model_config)
 
         cwd = "./test_" + str(model_name)
         for _ in range(total_episodes):
@@ -124,12 +115,7 @@ class DRLAgent:
             raise NotImplementedError("NotImplementedError")
 
         if model_config is None:
-            if model_name == "a2c":
-                model_config = MODELS[model_name].A2C_DEFAULT_CONFIG.copy()
-            elif model_name == "td3":
-                model_config = MODELS[model_name].TD3_DEFAULT_CONFIG.copy()
-            else:
-                model_config = MODELS[model_name].DEFAULT_CONFIG.copy()
+            model_config = MODELS[model_name].get_default_config().copy()
 
         register_env("finrl_env", env)
         model_config["env"] = "finrl_env"
@@ -137,17 +123,7 @@ class DRLAgent:
         model_config["log_level"] = "WARN"
         model_config["framework"] = framework
 
-        # ray.init() # Other Ray APIs will not work until `ray.init()` is called.
-        if model_name == "ppo":
-            trainer = MODELS[model_name].PPOTrainer(env=env, config=model_config)
-        elif model_name == "a2c":
-            trainer = MODELS[model_name].A2CTrainer(env=env, config=model_config)
-        elif model_name == "ddpg":
-            trainer = MODELS[model_name].DDPGTrainer(env=env, config=model_config)
-        elif model_name == "td3":
-            trainer = MODELS[model_name].TD3Trainer(env=env, config=model_config)
-        elif model_name == "sac":
-            trainer = MODELS[model_name].SACTrainer(env=env, config=model_config)
+        trainer = MODELS[model_name](config=model_config)
 
         try:
             trainer.restore(agent_path)
@@ -205,12 +181,7 @@ class DRLAgent_old:
 
         model = MODELS[model_name]
         # get algorithm default configration based on algorithm in RLlib
-        if model_name == "a2c":
-            model_config = model.A2C_DEFAULT_CONFIG.copy()
-        elif model_name == "td3":
-            model_config = model.TD3_DEFAULT_CONFIG.copy()
-        else:
-            model_config = model.DEFAULT_CONFIG.copy()
+        model_config = MODELS[model_name].get_default_config().copy()
         # pass env, log_level, price_array, tech_array, and turbulence_array to config
         model_config["env"] = self.env
         model_config["log_level"] = "WARN"
@@ -238,16 +209,7 @@ class DRLAgent_old:
                 ignore_reinit_error=True
             )  # Other Ray APIs will not work until `ray.init()` is called.
 
-        if model_name == "ppo":
-            trainer = model.PPOTrainer(env=self.env, config=model_config)
-        elif model_name == "a2c":
-            trainer = model.A2CTrainer(env=self.env, config=model_config)
-        elif model_name == "ddpg":
-            trainer = model.DDPGTrainer(env=self.env, config=model_config)
-        elif model_name == "td3":
-            trainer = model.TD3Trainer(env=self.env, config=model_config)
-        elif model_name == "sac":
-            trainer = model.SACTrainer(env=self.env, config=model_config)
+        trainer = MODELS[model_name](config=model_config)
 
         for _ in range(total_episodes):
             trainer.train()
@@ -269,28 +231,13 @@ class DRLAgent_old:
         if model_name not in MODELS:
             raise NotImplementedError("NotImplementedError")
 
-        if model_name == "a2c":
-            model_config = MODELS[model_name].A2C_DEFAULT_CONFIG.copy()
-        elif model_name == "td3":
-            model_config = MODELS[model_name].TD3_DEFAULT_CONFIG.copy()
-        else:
-            model_config = MODELS[model_name].DEFAULT_CONFIG.copy()
+        model_config = MODELS[model_name].get_default_config().copy()
         model_config["env"] = env
         model_config["log_level"] = "WARN"
 
         env_instance = env
 
-        # ray.init() # Other Ray APIs will not work until `ray.init()` is called.
-        if model_name == "ppo":
-            trainer = MODELS[model_name].PPOTrainer(env=env, config=model_config)
-        elif model_name == "a2c":
-            trainer = MODELS[model_name].A2CTrainer(env=env, config=model_config)
-        elif model_name == "ddpg":
-            trainer = MODELS[model_name].DDPGTrainer(env=env, config=model_config)
-        elif model_name == "td3":
-            trainer = MODELS[model_name].TD3Trainer(env=env, config=model_config)
-        elif model_name == "sac":
-            trainer = MODELS[model_name].SACTrainer(env=env, config=model_config)
+        trainer = MODELS[model_name](config=model_config)
 
         try:
             trainer.restore(agent_path)
