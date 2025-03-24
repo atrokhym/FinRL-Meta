@@ -142,7 +142,8 @@ class DRLAgent:
         parameters_dict = {}
         # Load the saved model
         try:
-            saved_model = torch.load(actor_path)
+            # saved_model = torch.load(actor_path)
+            saved_model = torch.load(actor_path, weights_only=False) # Add weights_only=False here
             if isinstance(saved_model, dict):
                 layers = []
                 for key in saved_model.keys():
